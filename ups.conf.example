@@ -1,0 +1,16 @@
+[ritar]
+    driver = nutdrv_qx
+    port = /dev/serial/by-id/usb-Prolific_Technology_Inc._USB-Serial_Controller_D-if00-port0
+    desc = "Ritar RTSW 1500"
+    
+    # Говорим NUT игнорировать "железный" сигнал разряда от ИБП 
+    # (потому что ИБП настроен на свинец и ждет 21V)
+    ignorelb
+    
+    # Настраиваем кривую напряжения для LiFePO4 24V (8 ячеек)
+    default.battery.voltage.high = 27.2
+    default.battery.voltage.low = 25.8
+    
+    # Как только расчетный заряд падает ниже 15% (это примерно 26.0V),
+    # принудительно переводим систему в статус LB (Low Battery) -> Shutdown!
+    override.battery.charge.low = 15

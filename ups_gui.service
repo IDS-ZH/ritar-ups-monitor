@@ -1,0 +1,16 @@
+[Unit]
+Description=Modern UPS Web GUI and Logger (Port 9009)
+# Жесткая привязка к NUT. Если nut-server останавливается, остановится и этот сервис.
+# Запускается только после успешного старта nut-server.
+BindsTo=nut-server.service
+After=network.target nut-server.service
+
+[Service]
+Type=simple
+User=mge_engineer
+ExecStart=/usr/bin/python3 /home/mge_engineer/ups_gui.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
