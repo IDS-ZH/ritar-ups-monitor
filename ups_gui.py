@@ -250,6 +250,7 @@ HTML_PAGE = """
                 <button class="tab-btn active" onclick="switchTab('dashboard')">Мониторинг</button>
                 <button class="tab-btn" onclick="switchTab('stats')">История и Графики</button>
                 <button class="tab-btn" onclick="switchTab('load_stats')">Нагрузка и Температура</button>
+                <button class="tab-btn" onclick="switchTab('battery_stats')">Батарея</button>
             </div>
             <input type="date" id="datePicker" class="date-picker" style="margin-bottom: 0;" onchange="loadStats()">
         </div>
@@ -313,11 +314,29 @@ HTML_PAGE = """
         </div>
     </div>
 
+    <div id="battery_stats" class="stats-view card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <div class="label">Напряжение аккумулятора (V)</div>
+        </div>
+        <div class="chart-container" style="margin-bottom: 2rem;">
+            <canvas id="battVoltChart"></canvas>
+        </div>
+        
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 1.5rem;">
+            <div class="label">Заряд аккумулятора (%)</div>
+        </div>
+        <div class="chart-container">
+            <canvas id="battChargeChart"></canvas>
+        </div>
+    </div>
+
     <script>
         let currentTab = 'dashboard';
         let chartInstance = null;
         let loadChartInstance = null;
         let tempChartInstance = null;
+        let battVoltChartInstance = null;
+        let battChargeChartInstance = null;
 
         // Установим сегодняшнюю дату по умолчанию
         document.getElementById('datePicker').valueAsDate = new Date();
@@ -331,10 +350,11 @@ HTML_PAGE = """
             document.getElementById('dashboard').style.display = tab === 'dashboard' ? 'grid' : 'none';
             document.getElementById('stats').style.display = tab === 'stats' ? 'block' : 'none';
             document.getElementById('load_stats').style.display = tab === 'load_stats' ? 'block' : 'none';
+            document.getElementById('battery_stats').style.display = tab === 'battery_stats' ? 'block' : 'none';
             
             document.getElementById('datePicker').style.display = tab === 'dashboard' ? 'none' : 'block';
 
-            if(tab === 'stats' || tab === 'load_stats') loadStats();
+            if(tab === 'stats' || tab === 'load_stats' || tab === 'battery_stats') loadStats();
         }
 
         async function loadStats() {
@@ -350,6 +370,8 @@ HTML_PAGE = """
             let outVoltData = [];
             let loadData = [];
             let tempData = [];
+            let battVoltData = [];
+            let battChargeData = [];
             
             for(let i = 0; i < data.length; i++) {
                 const pt = data[i];
@@ -362,6 +384,8 @@ HTML_PAGE = """
                     outVoltData.push({x: 'Разрыв', y: null});
                     loadData.push({x: 'Разрыв', y: null});
                     tempData.push({x: 'Разрыв', y: null});
+                    battVoltData.push({x: 'Разрыв', y: null});
+                    battChargeData.push({x: 'Разрыв', y: null});
                 }
                 
                 // Статус: если OL (Сеть) = 1, если OB (Батарея) = 0
@@ -371,6 +395,8 @@ HTML_PAGE = """
                 outVoltData.push({x: timeStr, y: pt.out_volt === undefined ? null : pt.out_volt});
                 loadData.push({x: timeStr, y: pt.load});
                 tempData.push({x: timeStr, y: pt.temp === undefined ? null : pt.temp});
+                battVoltData.push({x: timeStr, y: pt.batt_volt === undefined ? null : pt.batt_volt});
+                battChargeData.push({x: timeStr, y: pt.charge === undefined ? null : pt.charge});
             }
 
             if(chartInstance) chartInstance.destroy();
@@ -501,6 +527,72 @@ HTML_PAGE = """
                     }
                 }
             });
+
+            if(battVoltChartInstance) battVoltChartInstance.destroy();
+            const ctxBattVolt = document.getElementById('battVoltChart').getContext('2d');
+            battVoltChartInstance = new Chart(ctxBattVolt, {
+                type: 'line',
+                data: {
+                    datasets: [
+                        {
+                            label: 'Напряжение АКБ (V)',
+                            data: battVoltData,
+                            borderColor: '#3b82f6',
+                            backgroundColor: 'rgba(59, 130, 246, 0.2)',
+                            borderWidth: 2,
+                            fill: true,
+                            tension: 0.3,
+                            spanGaps: false
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    scales: {
+                        y: {
+                            type: 'linear',
+                            display: true,
+                            position: 'left',
+                            min: 20, max: 30
+                        }
+                    }
+                }
+            });
+
+            if(battChargeChartInstance) battChargeChartInstance.destroy();
+            const ctxBattCharge = document.getElementById('battChargeChart').getContext('2d');
+            battChargeChartInstance = new Chart(ctxBattCharge, {
+                type: 'line',
+                data: {
+                    datasets: [
+                        {
+                            label: 'Заряд АКБ (%)',
+                            data: battChargeData,
+                            borderColor: '#10b981',
+                            backgroundColor: 'rgba(16, 185, 129, 0.2)',
+                            borderWidth: 2,
+                            fill: true,
+                            tension: 0.3,
+                            spanGaps: false
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    scales: {
+                        y: {
+                            type: 'linear',
+                            display: true,
+                            position: 'left',
+                            min: 0, max: 100
+                        }
+                    }
+                }
+            });
         }
 
         async function fetchData() {
@@ -600,11 +692,11 @@ class UPSHandler(http.server.SimpleHTTPRequestHandler):
                 
                 conn = sqlite3.connect(DB_PATH)
                 c = conn.cursor()
-                c.execute("SELECT timestamp, status, in_volt, load, out_volt, temperature FROM ups_log WHERE timestamp >= ? AND timestamp < ? ORDER BY timestamp ASC", (dt_start, dt_end))
+                c.execute("SELECT timestamp, status, in_volt, load, out_volt, temperature, charge, voltage FROM ups_log WHERE timestamp >= ? AND timestamp < ? ORDER BY timestamp ASC", (dt_start, dt_end))
                 rows = c.fetchall()
                 conn.close()
                 
-                data = [{"ts": r[0], "st": r[1], "in_volt": r[2], "load": r[3], "out_volt": r[4], "temp": r[5]} for r in rows]
+                data = [{"ts": r[0], "st": r[1], "in_volt": r[2], "load": r[3], "out_volt": r[4], "temp": r[5], "charge": r[6], "batt_volt": r[7]} for r in rows]
                 
                 self.send_response(200)
                 self.send_header("Content-type", "application/json")
