@@ -1,0 +1,4 @@
+# Example upsd.users configuration for Ritar UPS monitor
+[upsmon_user]
+    password = YOUR_SECURE_PASSWORD
+    upsmon primary
