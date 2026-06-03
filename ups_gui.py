@@ -224,6 +224,25 @@ HTML_PAGE = """
             100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
         }
         .error { color: var(--accent-red); }
+        .anomaly-banner {
+            background: rgba(239, 68, 68, 0.15);
+            color: var(--accent-red);
+            border: 1px solid var(--accent-red);
+            padding: 1rem;
+            border-radius: 15px;
+            margin-bottom: 1.5rem;
+            text-align: center;
+            font-weight: 500;
+            width: 100%;
+            max-width: 900px;
+            box-shadow: 0 0 15px rgba(239, 68, 68, 0.15);
+            animation: pulse-red 2s infinite;
+        }
+        @keyframes pulse-red {
+            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
         .chart-container {
             position: relative;
             height: 400px;
@@ -244,6 +263,8 @@ HTML_PAGE = """
     <div class="header">
         <img src="/ups.png" alt="Ritar Schematic" class="ups-image">
         <h1>Ritar RTSW 1500</h1>
+        
+        <div id="anomalyBanner" class="anomaly-banner" style="display: none;"></div>
         
         <div class="tabs" style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; width: 100%; max-width: 900px; padding: 0.5rem; background: rgba(255, 255, 255, 0.05); border-radius: 30px; border: 1px solid rgba(255, 255, 255, 0.1); margin-bottom: 2rem; gap: 1rem;">
             <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
@@ -626,10 +647,24 @@ HTML_PAGE = """
                     badge.innerText = 'Статус: ' + stat;
                 }
 
-                const charge = data['battery.charge'] || 0;
-                document.getElementById('battCharge').innerText = charge;
+                if (data.voltage_anomaly) {
+                    const banner = document.getElementById('anomalyBanner');
+                    banner.innerText = data.voltage_anomaly_msg;
+                    banner.style.display = 'block';
+                } else {
+                    document.getElementById('anomalyBanner').style.display = 'none';
+                }
+
+                const charge = parseInt(data['battery.charge'] || 0);
+                const volt = parseFloat(data['battery.voltage'] || 0);
+                let chargeDisplay = charge;
+                if (volt > 27.2 && charge >= 100) {
+                    chargeDisplay = '100%+';
+                }
+                
+                document.getElementById('battCharge').innerText = chargeDisplay;
                 let battBar = document.getElementById('battProgress');
-                battBar.style.width = charge + '%';
+                battBar.style.width = (charge > 100 ? 100 : charge) + '%';
                 battBar.style.background = charge < 30 ? 'var(--accent-red)' : 'var(--accent-green)';
                 battBar.style.boxShadow = charge < 30 ? '0 0 15px var(--accent-red)' : '0 0 15px var(--accent-green)';
 
@@ -711,13 +746,35 @@ class UPSHandler(http.server.SimpleHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-type", "application/json")
             self.end_headers()
-            try:
+            try {
                 output = subprocess.check_output(['upsc', 'ritar'], stderr=subprocess.STDOUT).decode('utf-8')
                 data = {}
                 for line in output.split('\n'):
                     if ':' in line:
                         k, v = line.split(':', 1)
                         data[k.strip()] = v.strip()
+                
+                # Check for voltage anomaly (voltage >= 28.2V for more than 24 hours continuously)
+                now = int(time.time())
+                one_day_ago = now - 86400
+                anomaly = False
+                anomaly_msg = ""
+                try:
+                    conn = sqlite3.connect(DB_PATH)
+                    c = conn.cursor()
+                    c.execute("SELECT COUNT(*), MIN(voltage) FROM ups_log WHERE timestamp >= ?", (one_day_ago,))
+                    count, min_volt = c.fetchone()
+                    conn.close()
+                    # Ensure there are at least 100 data points to confirm we have continuous logs
+                    if count >= 100 and min_volt is not None and min_volt >= 28.2:
+                        anomaly = True
+                        anomaly_msg = "⚠️ Внимание: Напряжение батареи удерживается выше 28.2V более 24 часов! Возможен перезаряд LiFePO4."
+                except Exception:
+                    pass
+                
+                data['voltage_anomaly'] = anomaly
+                data['voltage_anomaly_msg'] = anomaly_msg
+
                 self.wfile.write(json.dumps(data).encode('utf-8'))
             except Exception as e:
                 self.wfile.write(json.dumps({"error": str(e)}).encode('utf-8'))
