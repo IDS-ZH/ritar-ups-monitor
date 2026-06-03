@@ -30,7 +30,7 @@ MODE=standalone
     default.battery.voltage.high = 27.2
     default.battery.voltage.low = 25.8
     
-    # Триггер экстренного выключения: при 15% расчетного заряда (около 26.0V)
+    # Триггер экстренного выключения: при 15% расчетного заряда (около 25.33V)
     override.battery.charge.low = 15
 ```
 

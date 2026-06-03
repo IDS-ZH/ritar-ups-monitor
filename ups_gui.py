@@ -746,7 +746,7 @@ class UPSHandler(http.server.SimpleHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-type", "application/json")
             self.end_headers()
-            try {
+            try:
                 output = subprocess.check_output(['upsc', 'ritar'], stderr=subprocess.STDOUT).decode('utf-8')
                 data = {}
                 for line in output.split('\n'):
